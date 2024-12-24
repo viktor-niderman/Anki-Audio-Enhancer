@@ -1,3 +1,4 @@
+import os
 import requests
 import json
 import urllib3
@@ -6,7 +7,10 @@ import base64
 import io
 import time
 from bs4 import BeautifulSoup
+from dotenv import load_dotenv
 
+# Load environment variables from .env file
+load_dotenv()
 # Suppress SSL warnings
 urllib3.disable_warnings(urllib3.exceptions.NotOpenSSLWarning)
 
@@ -53,14 +57,17 @@ def get_deck_cards(deck_name):
     return card_ids
 
 
-def get_cards_info(card_ids):
+def get_cards_info(deck_name):
     """
     Gets information about cards by their IDs.
 
-    :param card_ids: List of card IDs
+    :param deck_name: Name of the deck
     :return: List of card information
     """
+    card_ids = get_deck_cards(deck_name)
+
     if not card_ids:
+        print("No cards to display.")
         return []
 
     result = invoke('cardsInfo', {
@@ -209,8 +216,10 @@ def media_exists(filename):
     media_files = result.get('result', [])
     return filename in media_files
 
+def print_line():
+    print("-" * 40)
 
-def main():
+def select_deck_name():
     # Display the list of available decks
     decks = get_deck_names()
     if not decks:
@@ -220,10 +229,12 @@ def main():
     print("Available decks:")
     for deck in decks:
         print(f"- {deck}")
-    print("-" * 40)
+    print_line()
 
+    deck_name = os.getenv('DECK_NAME')
     # Prompt the user to enter the deck name
-    deck_name = input("Please enter the deck name you want to process: ").strip()
+    if deck_name is None:
+        deck_name = input("Please enter the deck name you want to process: ").strip()
 
     if not deck_name:
         print("No deck name entered. Exiting.")
@@ -232,14 +243,14 @@ def main():
     if deck_name not in decks:
         print(f"Deck '{deck_name}' not found. Please check the deck name.")
         return
+    return deck_name
 
-    card_ids = get_deck_cards(deck_name)
 
-    if not card_ids:
-        print("No cards to display.")
-        return
+def main():
+    # Get the name from .env file or prompt the user
+    deck_name = select_deck_name()
 
-    cards_info = get_cards_info(card_ids)
+    cards_info = get_cards_info(deck_name)
 
     if not cards_info:
         print("No card information available.")
@@ -276,7 +287,7 @@ def main():
         # Check if the 'Front' field already contains the [sound:] tag
         if "[sound:" in front_html:
             print("Audio already added for this card. Skipping.")
-            print("-" * 40)
+            print_line()
             continue
 
         # Strip HTML tags from the 'Front' field
@@ -292,7 +303,7 @@ def main():
             audio_buffer.close()
         except Exception as e:
             print(f"Error generating audio for card ID {card_id}: {e}")
-            print("-" * 40)
+            print_line()
             continue
 
         # Create a unique filename for the audio
@@ -304,7 +315,7 @@ def main():
             # Add the sound tag to the 'Front' field
             updated_front = front_html + f'\n[sound:{audio_filename}]'
             update_note_field(note_id, 'Front', updated_front)
-            print("-" * 40)
+            print_line()
             continue
 
         # Upload the audio to Anki
@@ -320,13 +331,13 @@ def main():
         due = get_card_due(card_id)
         if due is None:
             print(f"Failed to get the due date for card ID {card_id}. Skipping.")
-            print("-" * 40)
+            print_line()
             continue
 
         # Restore the due date of the card
         set_card_due(card_id, due)
 
-        print("-" * 40)
+        print_line()
         # Add a short delay to avoid overloading AnkiConnect
         time.sleep(0.1)
 
