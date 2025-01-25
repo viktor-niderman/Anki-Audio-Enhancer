@@ -307,7 +307,13 @@ def add_new_words_to_deck(deck_name):
             # Load images before adding the note
             for img in images:
                 try:
-                    store_media_file(img, Path("./newWords") / img)
+                    img_path = Path("./newWords") / img
+                    if img_path.exists():
+                        with open(img_path, "rb") as f:
+                            img_data = f.read()
+                        store_media_file(img, img_data)
+                    else:
+                        print(f"Image file '{img}' not found. Skipping upload.")
                 except Exception as e:
                     print(f"Error uploading image '{img}': {e}")
 
