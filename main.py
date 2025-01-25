@@ -8,6 +8,8 @@ import io
 import time
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
+from pathlib import Path
+import re
 
 # Load environment variables from .env file
 load_dotenv()
@@ -36,7 +38,7 @@ def get_deck_names():
 
 def get_deck_cards(deck_name):
     """
-    Gets the list of cards from the specified deck.
+    Gets the list of card IDs from the specified deck.
 
     :param deck_name: Name of the deck
     :return: List of card IDs
@@ -150,6 +152,40 @@ def update_note_field(note_id, field_name, new_value):
     return result
 
 
+def add_note(deck_name, front, back):
+    """
+    Adds a new note to Anki.
+
+    :param deck_name: Name of the deck
+    :param front: Front field content
+    :param back: Back field content
+    :return: Add note result
+    """
+    note = {
+        "deckName": deck_name,
+        "modelName": "Basic",
+        "fields": {
+            "Front": front,
+            "Back": back
+        },
+        "options": {
+            "allowDuplicate": False
+        },
+        "tags": []
+    }
+
+    result = invoke('addNote', {
+        "note": note
+    })
+
+    if 'error' in result and result['error']:
+        print(f"Error adding note: {result['error']}")
+    else:
+        print(f"Note added successfully with ID: {result.get('result')}")
+
+    return result
+
+
 def get_card_due(card_id):
     """
     Gets the current due date of a card.
@@ -202,22 +238,9 @@ def strip_html(html_content):
     return soup.get_text(separator=" ", strip=True)
 
 
-def media_exists(filename):
-    """
-    Checks if a media file exists in Anki.
-
-    :param filename: File name
-    :return: True if file exists, else False
-    """
-    result = invoke('mediaFiles')
-    if 'error' in result and result['error']:
-        print(f"Error getting media files list: {result['error']}")
-        return False
-    media_files = result.get('result', [])
-    return filename in media_files
-
 def print_line():
     print("-" * 40)
+
 
 def select_deck_name():
     # Display the list of available decks
@@ -233,7 +256,7 @@ def select_deck_name():
 
     deck_name = os.getenv('DECK_NAME')
     # Prompt the user to enter the deck name
-    if deck_name is None:
+    if not deck_name:
         deck_name = input("Please enter the deck name you want to process: ").strip()
 
     if not deck_name:
@@ -246,10 +269,79 @@ def select_deck_name():
     return deck_name
 
 
-def main():
-    # Get the name from .env file or prompt the user
-    deck_name = select_deck_name()
+def add_new_words_to_deck(deck_name):
+    print("Adding new words from ./newWords/_.md")
+    try:
+        file_path = Path("./newWords/_.md")
+        content = file_path.read_text(encoding="utf-8")
+        entries = content.strip().split("\n\n")
 
+        for entry in entries:
+            lines = entry.strip().split("\n")
+            if len(lines) < 2:
+                print("Not enough lines in entry. Skipping...")
+                continue
+
+            front = lines[0].strip()          # English word
+            back_translation = lines[1].strip()   # Translation
+
+            # Processing images and expressions
+            images = []
+            expressions = []
+            additional_lines = []
+
+            for line in lines[2:]:
+                img_match = re.match(r'!\[.*?\]\((.*?)\)', line)
+                if img_match:
+                    img_filename = img_match.group(1)
+                    images.append(img_filename)
+                else:
+                    # Check for expressions in ~ ~
+                    expr_match = re.findall(r'~(.*?)~', line)
+                    if expr_match:
+                        expressions.extend(expr_match)
+                        additional_lines.append(line)  # Save the line with the expression
+                    else:
+                        additional_lines.append(line)
+
+            # Load images before adding the note
+            for img in images:
+                try:
+                    store_media_file(img, Path("./newWords") / img)
+                except Exception as e:
+                    print(f"Error uploading image '{img}': {e}")
+
+            # Form the Back field
+            back_parts = [back_translation]
+
+            if images:
+                for img in images:
+                    # Embed the image using HTML tag
+                    back_parts.append(f'<br><br><img src="{img}">')
+
+            if additional_lines:
+                for line in additional_lines:
+                    back_parts.append(f'<br><br>{line}')  # Keep ~ ~ around expressions
+
+            back_content = ''.join(back_parts)
+
+            # Add the note
+            add_note_result = add_note(deck_name, front, back_content)
+
+            # Check if the note was added successfully
+            if add_note_result.get('error'):
+                print(f"Error adding note: {add_note_result.get('error')}")
+            else:
+                print(f"Note added successfully with ID: {add_note_result.get('result')}")
+
+            time.sleep(0.1)  # Short delay to avoid overloading AnkiConnect
+
+    except Exception as e:
+        print(f"Error reading or processing file: {e}")
+
+
+def process_existing_cards(deck_name):
+    print("Processing existing cards to add audio")
     cards_info = get_cards_info(deck_name)
 
     if not cards_info:
@@ -276,58 +368,92 @@ def main():
 
         fields = note.get('fields', {})
 
-        # Assume that fields are named 'Front' and 'Back'
-        front_html = fields.get('Front', {}).get('value', 'No data')
-        back = fields.get('Back', {}).get('value', 'No data')
+        # Swap Front and Back
+        front_html = fields.get('Front', {}).get('value', 'No data')  # English word
+        back_html = fields.get('Back', {}).get('value', 'No data')    # Translation and images
 
         print(f"Processing Card ID: {card_id}")
         print(f"Front (HTML): {front_html}")
-        print(f"Back: {back}")
+        print(f"Back (HTML): {back_html}")
 
-        # Check if the 'Front' field already contains the [sound:] tag
-        if "[sound:" in front_html:
-            print("Audio already added for this card. Skipping.")
-            print_line()
-            continue
+        # --- Processing Front Field ---
+        # Check if Front already contains [sound:]
+        if "[sound:" not in front_html:
+            # Generate audio for Front
+            front_text = strip_html(front_html)
+            print(f"Front (Text): {front_text}")
 
-        # Strip HTML tags from the 'Front' field
-        front_text = strip_html(front_html)
-        print(f"Front (Text): {front_text}")
+            try:
+                tts_front = gTTS(text=front_text, lang='en')
+                audio_buffer_front = io.BytesIO()
+                tts_front.write_to_fp(audio_buffer_front)
+                audio_data_front = audio_buffer_front.getvalue()
+                audio_buffer_front.close()
+            except Exception as e:
+                print(f"Error generating audio for Front of card ID {card_id}: {e}")
+                print_line()
+                continue
 
-        # Generate audio for the cleaned text
-        try:
-            tts = gTTS(text=front_text, lang='en')
-            audio_buffer = io.BytesIO()
-            tts.write_to_fp(audio_buffer)
-            audio_data = audio_buffer.getvalue()
-            audio_buffer.close()
-        except Exception as e:
-            print(f"Error generating audio for card ID {card_id}: {e}")
-            print_line()
-            continue
+            # Create a unique filename for Front audio
+            audio_filename_front = f"card_{card_id}_front.mp3"
 
-        # Create a unique filename for the audio
-        audio_filename = f"card_{card_id}.mp3"
+            # Attempt to upload the media file
+            try:
+                store_media_file(audio_filename_front, audio_data_front)
+            except Exception as e:
+                print(f"Error uploading media file '{audio_filename_front}': {e}")
+                print_line()
+                continue
 
-        # Check if the media file already exists
-        if media_exists(audio_filename):
-            print(f"Media file '{audio_filename}' already exists. Skipping upload.")
-            # Add the sound tag to the 'Front' field
-            updated_front = front_html + f'\n[sound:{audio_filename}]'
+            # Add the sound tag to Front field
+            updated_front = front_html + f'\n[sound:{audio_filename_front}]'
+
+            # Update Front field in the note
             update_note_field(note_id, 'Front', updated_front)
-            print_line()
-            continue
 
-        # Upload the audio to Anki
-        store_media_file(audio_filename, audio_data)
+        else:
+            print("Front field already contains audio. Skipping Front field.")
 
-        # Add the sound tag to the 'Front' field
-        updated_front = front_html + f'\n[sound:{audio_filename}]'
+        # --- Processing Expressions Wrapped in ~ ~ in Back Field ---
+        # Find expressions wrapped in ~ ~
+        expressions = re.findall(r'~(.*?)~', back_html)
+        if expressions:
+            for expr in expressions:
+                print(f"Found expression to vocalize: {expr}")
+                expr_text = strip_html(expr)
 
-        # Update the 'Front' field in the note
-        update_note_field(note_id, 'Front', updated_front)
+                try:
+                    tts_expr = gTTS(text=expr_text, lang='en')
+                    audio_buffer_expr = io.BytesIO()
+                    tts_expr.write_to_fp(audio_buffer_expr)
+                    audio_data_expr = audio_buffer_expr.getvalue()
+                    audio_buffer_expr.close()
+                except Exception as e:
+                    print(f"Error generating audio for expression '{expr}' in card ID {card_id}: {e}")
+                    continue
 
-        # Get the current due date of the card
+                # Create a unique filename for the expression audio
+                safe_expr = re.sub(r'\W+', '_', expr_text)
+                audio_filename_expr = f"card_{card_id}_expr_{safe_expr}.mp3"
+
+                # Attempt to upload the media file
+                try:
+                    store_media_file(audio_filename_expr, audio_data_expr)
+                except Exception as e:
+                    print(f"Error uploading media file '{audio_filename_expr}': {e}")
+                    continue
+
+                # Create the sound tag
+                sound_tag = f'[sound:{audio_filename_expr}]'
+                # Replace ~expression~ with "expression [sound:file.mp3]"
+                updated_back = back_html.replace(f'~{expr}~', f"{expr} {sound_tag}")
+
+                # Update Back field in the note
+                update_note_field(note_id, 'Back', updated_back)
+        else:
+            print("No expressions wrapped in ~ ~ found in Back field.")
+
+        # Restore the due date
         due = get_card_due(card_id)
         if due is None:
             print(f"Failed to get the due date for card ID {card_id}. Skipping.")
@@ -338,8 +464,23 @@ def main():
         set_card_due(card_id, due)
 
         print_line()
-        # Add a short delay to avoid overloading AnkiConnect
+        # Short delay to avoid overloading AnkiConnect
         time.sleep(0.1)
+
+
+def main():
+    # Get the deck name from .env file or prompt the user
+    deck_name = select_deck_name()
+
+    if not deck_name:
+        print("Deck name not selected. Exiting.")
+        return
+
+    # Add new words
+    add_new_words_to_deck(deck_name)
+
+    # Process existing cards
+    process_existing_cards(deck_name)
 
 
 if __name__ == "__main__":

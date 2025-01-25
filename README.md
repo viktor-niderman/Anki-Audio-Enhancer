@@ -25,7 +25,7 @@
 
 ### Prerequisites
 
-- **Python 3.7+**: Ensure you have Python installed. You can download it from [here](https://www.python.org/downloads/).
+- **Python 3.12+**: Ensure you have Python installed. You can download it from [here](https://www.python.org/downloads/).
 - **Anki**: Download and install Anki from [here](https://apps.ankiweb.net/).
 - **AnkiConnect Add-on**: Install the AnkiConnect add-on by navigating to `Tools > Add-ons > Get Add-ons` in Anki and entering the code `2055492159`.
 
