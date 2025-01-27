@@ -1,108 +1,21 @@
 import os
-import requests
-import json
-import urllib3
-from gtts import gTTS
-import base64
-import io
+
 import time
-from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 from pathlib import Path
 import re
 import uuid
 
+from utils.anki import invoke, store_media_file, add_note
+from utils.audio import generate_audio
+
 # Load environment variables from .env file
 load_dotenv()
-# Suppress SSL warnings
-urllib3.disable_warnings(urllib3.exceptions.NotOpenSSLWarning)
 
-def invoke(action, params=None):
-    """Function to send requests to the AnkiConnect API."""
-    response = requests.post('http://localhost:8765', json.dumps({
-        "action": action,
-        "version": 6,
-        "params": params or {}
-    }), verify=False)  # Disable SSL verification to suppress warnings
-    return response.json()
-
-def store_media_file(filename, data):
-    """
-    Uploads a media file to Anki via AnkiConnect.
-
-    :param filename: File name (e.g., 'unique_file_name.mp3')
-    :param data: Binary file data
-    :return: Upload result
-    """
-    encoded_data = base64.b64encode(data).decode('utf-8')
-    result = invoke('storeMediaFile', {
-        "filename": filename,
-        "data": encoded_data
-    })
-
-    if 'error' in result and result['error']:
-        print(f"Error uploading media file '{filename}': {result['error']}")
-    else:
-        print(f"Media file '{filename}' uploaded successfully.")
-
-    return result
-
-def add_note(deck_name, front, back):
-    """
-    Adds a new note to Anki.
-
-    :param deck_name: Name of the deck
-    :param front: Front field content
-    :param back: Back field content
-    :return: Add note result
-    """
-    note = {
-        "deckName": deck_name,
-        "modelName": "Basic",
-        "fields": {
-            "Front": front,
-            "Back": back
-        },
-        "options": {
-            "allowDuplicate": False
-        },
-        "tags": []
-    }
-
-    result = invoke('addNote', {
-        "note": note
-    })
-
-    if 'error' in result and result['error']:
-        print(f"Error adding note: {result['error']}")
-    else:
-        print(f"Note added successfully with ID: {result.get('result')}")
-
-    return result
-
-def generate_audio(text, lang='en'):
-    """
-    Generates TTS audio for the given text.
-
-    :param text: Text to convert to audio
-    :param lang: Language for TTS
-    :return: Audio data in binary format
-    """
+def add_new_words_to_deck(deck_name, new_words_path, limit, language):
+    print("Adding new words from ", new_words_path)
     try:
-        tts = gTTS(text=text, lang=lang)
-        audio_buffer = io.BytesIO()
-        tts.write_to_fp(audio_buffer)
-        audio_data = audio_buffer.getvalue()
-        audio_buffer.close()
-        return audio_data
-    except Exception as e:
-        print(f"Error generating audio for text '{text}': {e}")
-        return None
-
-def add_new_words_to_deck(deck_name):
-    print("Adding new words from ./newWords/_.md")
-    try:
-        file_path = Path("./newWords/_.md")
+        file_path = Path(new_words_path)
         content = file_path.read_text(encoding="utf-8")
         entries = content.strip().split("\n\n")
 
@@ -113,14 +26,15 @@ def add_new_words_to_deck(deck_name):
                 continue
 
             front = lines[0].strip()          # English word
-            back_translation = lines[1].strip()   # Translation
-
             # Generate TTS audio for the Front field
             audio_data_front = generate_audio(front)
             if audio_data_front:
                 audio_filename_front = f"{uuid.uuid4()}_front.mp3"
                 store_media_file(audio_filename_front, audio_data_front)
                 front += f'\n[sound:{audio_filename_front}]'
+
+
+            back_translation = lines[1].strip()   # Translation
 
             # Processing images and expressions
             images = []
@@ -140,7 +54,7 @@ def add_new_words_to_deck(deck_name):
             if images:
                 for img in images:
                     try:
-                        img_path = Path("./newWords") / img
+                        img_path = Path(os.path.dirname(new_words_path)) / img
                         if img_path.exists():
                             with open(img_path, "rb") as f:
                                 img_data = f.read()
@@ -167,21 +81,34 @@ def add_new_words_to_deck(deck_name):
             else:
                 print(f"Note added successfully with ID: {add_note_result.get('result')}")
 
-            time.sleep(0.1)  # Short delay to avoid overloading AnkiConnect
+            time.sleep(0.15)  # Short delay to avoid overloading AnkiConnect
 
     except Exception as e:
         print(f"Error reading or processing file: {e}")
 
 def main():
-    # Get the deck name from .env file or prompt the user
     deck_name = os.getenv('DECK_NAME')
+    new_words_path = os.getenv('NEW_WORDS_FILE_NAME')
+    is_add_new = os.getenv('ADD_NEW')
+    is_rewrite_old = os.getenv('REWRITE_OLD')
+    limit = os.getenv('LIMIT')
+    language = os.getenv('LANGUAGE')
 
     if not deck_name:
         print("Deck name not specified in the .env file. Exiting.")
         return
 
+    if is_rewrite_old == 'True':
+        print("Rewrite old is set - DISABLE")
+    if is_add_new == 'True':
+        if not new_words_path:
+            print("Deck name not specified in the .env file. Exiting.")
+            return
+        add_new_words_to_deck(deck_name, new_words_path, limit, language)
+
+
     # Add new words
-    add_new_words_to_deck(deck_name)
+
 
     # process_existing_cards(deck_name)
 
