@@ -1,4 +1,5 @@
 import os
+import sys
 
 import time
 from dotenv import load_dotenv
@@ -10,9 +11,9 @@ from utils.anki import invoke, store_media_file, add_note
 from utils.audio import generate_audio
 
 # Load environment variables from .env file
-load_dotenv()
+load_dotenv(sys.argv[1])
 
-def add_new_words_to_deck(deck_name, new_words_path, limit, language):
+def add_new_words_to_deck(deck_name, new_words_path, limit, language, tld):
     print("Adding new words from ", new_words_path)
     try:
         file_path = Path(new_words_path)
@@ -27,7 +28,7 @@ def add_new_words_to_deck(deck_name, new_words_path, limit, language):
 
             front = lines[0].strip()          # English word
             # Generate TTS audio for the Front field
-            audio_data_front = generate_audio(front)
+            audio_data_front = generate_audio(front, lang=language, tld=tld)
             if audio_data_front:
                 audio_filename_front = f"{uuid.uuid4()}_front.mp3"
                 store_media_file(audio_filename_front, audio_data_front)
@@ -76,11 +77,6 @@ def add_new_words_to_deck(deck_name, new_words_path, limit, language):
             # Add the note
             add_note_result = add_note(deck_name, front, back_content)
 
-            if add_note_result.get('error'):
-                print(f"Error adding note: {add_note_result.get('error')}")
-            else:
-                print(f"Note added successfully with ID: {add_note_result.get('result')}")
-
             time.sleep(0.15)  # Short delay to avoid overloading AnkiConnect
 
     except Exception as e:
@@ -92,7 +88,8 @@ def main():
     is_add_new = os.getenv('ADD_NEW')
     is_rewrite_old = os.getenv('REWRITE_OLD')
     limit = os.getenv('LIMIT')
-    language = os.getenv('LANGUAGE')
+    lang = os.getenv('LANG')
+    tld = os.getenv('TLD')
 
     if not deck_name:
         print("Deck name not specified in the .env file. Exiting.")
@@ -104,7 +101,7 @@ def main():
         if not new_words_path:
             print("Deck name not specified in the .env file. Exiting.")
             return
-        add_new_words_to_deck(deck_name, new_words_path, limit, language)
+        add_new_words_to_deck(deck_name, new_words_path, limit, lang, tld)
 
 
     # Add new words

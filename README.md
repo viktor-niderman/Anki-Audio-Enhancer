@@ -66,19 +66,20 @@
 # Usage
 1.	Ensure Anki is Running
     Start Anki and make sure the AnkiConnect add-on is active.
-2. Run the Script
+2. Coppy the example.env and language folder
     ```bash
-    python anki_audio_enhancer.py
-    ``` 
-3.	Enter Deck Name
-    When prompted, input the exact name of the deck you wish to enhance with audio.
+    cp .example.env.english .env.english
+    cp -r example-words-english words-english
+    ```
+    Update the .env file with your AnkiConnect port number and deck name.
+3. Run the Script with .env in parameter
+    ```bash
+    python main.py .example.env.english
+    ```
 4.	Process Execution
 The script will:
-	•	Retrieve all cards from the specified deck.
-	•	Generate audio for the front side of each card.
-	•	Upload the audio to Anki and embed it into the card’s front field.
-	•	Preserve the original due dates of the cards.
-	5.	Completion
+	- Copy cards from md file to Anki
+    - Generate audio files for each card
 Upon successful execution, your selected Anki deck will have audio files integrated into each card’s front field, enhancing your study sessions with auditory learning.
 
 # License
