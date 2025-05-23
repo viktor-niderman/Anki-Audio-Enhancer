@@ -61,35 +61,34 @@ def add_new_words_to_deck(deck_name, new_words_path, language, tld):
                 print(f"Error uploading image '{image}': {e}")
 
             back_content = f"""
-<div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; border-radius: 12px; background: #1b1b1b; color: white; padding: 1em;">
-
-  <div style="margin-bottom: 1em; font-weight: bold;">
+<div class="word-card">
+  <div class="word-description">
     {word_description}
   </div>
 
-  <div style="font-size: 0.85em; border-radius: 8px; padding: 0.65em 1em; background-color: #263543; margin-bottom: 0.75em; position: relative; color: #349ca7;">
-    <div style="position: absolute; top: 0.2em; right: 0.2em; font-size: 0.6em; font-weight: bold; color: #0077cc;">💬</div>
+  <div class="word-box word-examples">
+    <div class="word-icon">💬</div>
     <i>{word_examples}</i>
   </div>
 
-  <div style="font-size: 0.85em; border-radius: 8px; padding: 0.65em 1em; background-color: #222e1e; margin-bottom: 0.75em; position: relative; color: #6bb86b;">
-    <div style="position: absolute; top: 0.2em; right: 0.2em; font-size: 0.6em; font-weight: bold; color: #2d8a34;">🧩</div>
+  <div class="word-box word-phrases">
+    <div class="word-icon">🧩</div>
     <i>{word_phrases}</i>
   </div>
 
-  <div style="font-size: 0.85em; border-radius: 8px; padding: 0.65em 1em; background-color: #30253d;; margin-bottom: 0.75em; position: relative; color: #c76cc5;">
-    <div style="position: absolute; top: 0.2em; right: 0.2em; font-size: 0.6em; font-weight: bold; color: #8e44ad;">🔁</div>
+  <div class="word-box word-synonyms">
+    <div class="word-icon">🔁</div>
     <i>{word_synonyms}</i>
   </div>
 
-  <div style="margin: 1em 0;">{word_image}</div>
+  <div class="word-image">{word_image}</div>
 
-  <details style="margin-top: 1em;">
-    <summary style="cursor: pointer; color: #4a6373; font-weight: 500;">Translate</summary>
-    <div style="margin-top: 0.5em;">{word_translation}</div>
+  <details class="word-translate">
+    <summary>Translate</summary>
+    <div>{word_translation}</div>
   </details>
-
 </div>
+
             """
 
             # Add the note
