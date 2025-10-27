@@ -1,6 +1,5 @@
 import os
 import sys
-
 import time
 from dotenv import load_dotenv
 from pathlib import Path
@@ -10,8 +9,8 @@ import uuid
 from utils.anki import invoke, store_media_file, add_note
 from utils.audio import generate_audio
 
-# Load environment variables from .env file
-load_dotenv(sys.argv[1])
+# Load environment variables from .env file, allowing config to override system defaults
+load_dotenv(sys.argv[1], override=True)
 
 def add_new_words_to_deck(deck_name, new_words_path, limit, language, tld):
     print("Adding new words from ", new_words_path)
@@ -21,27 +20,38 @@ def add_new_words_to_deck(deck_name, new_words_path, limit, language, tld):
         entries = content.strip().split("\n\n")
 
         for entry in entries:
-            lines = entry.strip().split("\n")
-            if len(lines) < 2:
-                print("Not enough lines in entry. Skipping...")
+            lines = [ln.strip() for ln in entry.strip().split("\n") if ln.strip()]
+
+            # Expecting at least: 1) front word, 2) example phrase, 3) translation
+            if len(lines) < 3:
+                print("Not enough lines in entry (need: word, phrase, translation). Skipping...")
                 continue
 
-            front = lines[0].strip()          # English word
-            # Generate TTS audio for the Front field
+            # Front: English word
+            front = lines[0]  # keep exact text
+
+            # Generate TTS for the Front field (word)
             audio_data_front = generate_audio(front, lang=language, tld=tld)
             if audio_data_front:
                 audio_filename_front = f"{uuid.uuid4()}_front.mp3"
                 store_media_file(audio_filename_front, audio_data_front)
                 front += f'\n[sound:{audio_filename_front}]'
 
+            # Back parts in the new order:
+            # 1) English phrase (with TTS)
+            # 2) Images (if any)
+            # 3) Translation
+            # 4) Additional lines (if any)
 
-            back_translation = lines[1].strip()   # Translation
+            phrase_en = lines[1]
+            translation = lines[2]
 
-            # Processing images and expressions
+            # Prepare containers
             images = []
             additional_lines = []
 
-            for line in lines[2:]:
+            # Parse remaining lines (from 4th line onward)
+            for line in lines[3:]:
                 img_match = re.match(r'!\[.*?\]\((.*?)\)', line)
                 if img_match:
                     img_filename = img_match.group(1)
@@ -49,9 +59,18 @@ def add_new_words_to_deck(deck_name, new_words_path, limit, language, tld):
                 else:
                     additional_lines.append(line)
 
-            # Form the Back field
-            back_parts = [back_translation]
+            back_parts = []
 
+            # (1) Phrase + TTS
+            phrase_block = phrase_en
+            audio_data_phrase = generate_audio(phrase_en, lang=language, tld=tld)
+            if audio_data_phrase:
+                audio_filename_phrase = f"{uuid.uuid4()}_phrase.mp3"
+                store_media_file(audio_filename_phrase, audio_data_phrase)
+                phrase_block += f'\n[sound:{audio_filename_phrase}]'
+            back_parts.append(phrase_block)
+
+            # (2) Images
             if images:
                 for img in images:
                     try:
@@ -59,15 +78,19 @@ def add_new_words_to_deck(deck_name, new_words_path, limit, language, tld):
                         if img_path.exists():
                             with open(img_path, "rb") as f:
                                 img_data = f.read()
-
                             unique_filename = f"{uuid.uuid4()}_{img}"
-                            back_parts.append(f'<br><br><img src="{unique_filename}">')
+                            # keep exact upload & embedding flow
                             store_media_file(unique_filename, img_data)
+                            back_parts.append(f'<br><br><img src="{unique_filename}">')
                         else:
                             print(f"Image file '{img}' not found. Skipping upload.")
                     except Exception as e:
                         print(f"Error uploading image '{img}': {e}")
 
+            # (3) Translation
+            back_parts.append(f'<br><br>{translation}')
+
+            # (4) Additional lines (if any)
             if additional_lines:
                 for line in additional_lines:
                     back_parts.append(f'<br><br>{line}')
@@ -77,7 +100,8 @@ def add_new_words_to_deck(deck_name, new_words_path, limit, language, tld):
             # Add the note
             add_note_result = add_note(deck_name, front, back_content)
 
-            time.sleep(0.15)  # Short delay to avoid overloading AnkiConnect
+            # Small delay to avoid overloading AnkiConnect
+            time.sleep(0.15)
 
     except Exception as e:
         print(f"Error reading or processing file: {e}")
@@ -102,10 +126,6 @@ def main():
             print("Deck name not specified in the .env file. Exiting.")
             return
         add_new_words_to_deck(deck_name, new_words_path, limit, lang, tld)
-
-
-    # Add new words
-
 
     # process_existing_cards(deck_name)
 
