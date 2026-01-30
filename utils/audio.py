@@ -1,10 +1,8 @@
 from gtts import gTTS
 import io
-
 def generate_audio(text, lang='en', tld='com'):
     """
     Generates TTS audio for the given text.
-
     :param text: Text to convert to audio
     :param lang: Language for TTS
     :param tld: Language TLD
@@ -20,4 +18,3 @@ def generate_audio(text, lang='en', tld='com'):
     except Exception as e:
         print(f"Error generating audio for text '{text}': {e}")
         return None
-
